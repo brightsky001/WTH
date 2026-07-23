@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI 끝말잇기 대국</title>
+  <style>
+    :root {
+      --bg-color: #f4f7f6;
+      --card-bg: #ffffff;
+      --primary: #4a90e2;
+      --user-msg: #e3f2fd;
+      --ai-msg: #f1f1f1;
+      --text: #333333;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 480px;
+      background: var(--card-bg);
+      border-radius: 16px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+      display: flex;
+      flex-direction: column;
+      height: 80vh;
+      overflow: hidden;
+    }
+
+    .header {
+      padding: 20px;
+      background: var(--primary);
+      color: white;
+      text-align: center;
+    }
+    .header h1 { font-size: 1.25rem; font-weight: 600; }
+    .header p { font-size: 0.85rem; opacity: 0.9; margin-top: 4px; }
+
+    .chat-box {
+      flex: 1;
+      padding: 20px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .message {
+      max-width: 75%;
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-size: 0.95rem;
+      line-height: 1.4;
+      word-break: break-all;
+    }
+    .message.user {
+      align-self: flex-end;
+      background-color: var(--primary);
+      color: white;
+      border-bottom-right-radius: 2px;
+    }
+    .message.ai {
+      align-self: flex-start;
+      background-color: var(--ai-msg);
+      color: var(--text);
+      border-bottom-left-radius: 2px;
+    }
+    .message.system {
+      align-self: center;
+      background-color: transparent;
+      color: #888;
+      font-size: 0.8rem;
+    }
+
+    .input-area {
+      padding: 16px;
+      border-top: 1px solid #eee;
+      display: flex;
+      gap: 8px;
+    }
+    input[type="text"] {
+      flex: 1;
+      padding: 12px 16px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      font-size: 1rem;
+      outline: none;
+    }
+    input[type="text"]:focus { border-color: var(--primary); }
+    button {
+      padding: 12px 20px;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:disabled { background: #ccc; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <h1>🤖 AI 끝말잇기</h1>
+    <p>Gemini와 펼치는 한글 끝말잇기 대결</p>
+  </div>
+
+  <div class="chat-box" id="chatBox">
+    <div class="message system">게임을 시작합니다! 첫 단어를 입력해 주세요.</div>
+  </div>
+
+  <div class="input-area">
+    <input type="text" id="wordInput" placeholder="단어 입력 (예: 바나나)" id="input" autofocus />
+    <button id="sendBtn" onclick="submitWord()">전송</button>
+  </div>
+</div>
+
+<script>
+  let wordHistory = [];
+  let lastWord = "";
+
+  const chatBox = document.getElementById('chatBox');
+  const wordInput = document.getElementById('wordInput');
+  const sendBtn = document.getElementById('sendBtn');
+
+  wordInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') submitWord();
+  });
+
+  // 한국어 두음법칙 호환성 검사
+  function isValidNextChar(lastChar, firstChar) {
+    if (lastChar === firstChar) return true;
+
+    // 간단한 두음법칙 매핑 (녀->여, 뇨->요, 뉴->유, 니->이, 랴->야, 려->여, 례->예, 료->요, 류->유, 리->이, 라->나 등)
+    const dueumMap = {
+      '라': '나', '락': '낙', '란': '난', '랄': '날', '람': '남', '랍': '납', '랑': '낭',
+      '래': '내', '랭': '냉', '로': '노', '록': '녹', '론': '논', '롱': '농', '뢰': '뇌',
+      '루': '누', '류': '유', '리': '이', '려': '여', '례': '예', '료': '요', '녀': '여',
+      '년': '연', '념': '염', '뇨': '요', '뉴': '유', '니': '이'
+    };
+
+    return dueumMap[lastChar] === firstChar;
+  }
+
+  function appendMessage(text, sender) {
+    const msg = document.createElement('div');
+    msg.classList.add('message', sender);
+    msg.textContent = text;
+    chatBox.appendChild(msg);
+    chatBox.scrollTop = chatBox.scrollHeight;
+  }
+
+  async function submitWord() {
+    const inputWord = wordInput.value.trim();
+    if (!inputWord) return;
+
+    // 1. 글자 수 검사
+    if (inputWord.length < 2) {
+      alert("두 글자 이상의 단어를 입력해 주세요.");
+      return;
+    }
+
+    // 2. 끝말잇기 규칙 검사
+    if (lastWord) {
+      const lastChar = lastWord.slice(-1);
+      const firstChar = inputWord.charAt(0);
+
+      if (!isValidNextChar(lastChar, firstChar)) {
+        alert(`'${lastChar}'(으)로 시작하는 단어를 입력해야 합니다!`);
+        return;
+      }
+    }
+
+    // 3. 중복 입력 검사
+    if (wordHistory.includes(inputWord)) {
+      alert("이미 사용된 단어입니다!");
+      return;
+    }
+
+    // 사용자 메시지 표시 및 상태 업데이트
+    appendMessage(inputWord, 'user');
+    wordHistory.push(inputWord);
+    lastWord = inputWord;
+    wordInput.value = '';
+    
+    // UI 비활성화
+    wordInput.disabled = true;
+    sendBtn.disabled = true;
+
+    try {
+      // 서버리스 API 호출
+      const response = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          word: inputWord,
+          history: wordHistory
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || '응답을 받지 못했습니다.');
+      }
+
+      const aiReply = data.reply;
+
+      if (aiReply === 'GG' || !aiReply) {
+        appendMessage('AI가 단어를 잇지 못했습니다. 당신의 승리입니다! 🎉', 'system');
+      } else {
+        appendMessage(aiReply, 'ai');
+        wordHistory.push(aiReply);
+        lastWord = aiReply;
+      }
+
+    } catch (err) {
+      alert("오류가 발생했습니다: " + err.message);
+    } finally {
+      wordInput.disabled = false;
+      sendBtn.disabled = false;
+      wordInput.focus();
+    }
+  }
+</script>
+</body>
+</html>
